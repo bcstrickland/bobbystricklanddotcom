@@ -310,8 +310,8 @@
         }
         .game-overlay-title { font-size: 38px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
         .game-overlay-score { font-size: 16px; color: #a1a1a6; }
-        .game-overlay-tap { font-size: 15px; color: #0a84ff; margin-top: 12px; }
-        .game-overlay-quit { font-size: 17px; color: #ff3b30; margin-top: 8px; cursor: pointer; font-weight: 400; }
+        .game-overlay-tap { font-size: 17px; color: #0a84ff; margin-top: 16px; }
+        .game-overlay-quit { font-size: 17px; color: #ff3b30; margin-top: 20px; cursor: pointer; font-weight: 400; }
 
         /* Mobile: remove phone frame, show content natively */
         @media (max-width: 500px) {
@@ -797,28 +797,49 @@
                 if (e.key === 'ArrowRight' && dir.x === 0) { nextDir = {x:  1, y:  0}; e.preventDefault(); }
             });
 
-            // Tap-relative controls (mobile only)
-            // Tap anywhere on the canvas: direction is determined by angle from snake head to tap point
+            // Combined swipe + tap-relative controls (mobile only)
+            var touchStartX = 0, touchStartY = 0;
+            var SWIPE_THRESHOLD = 30; // px — more than this = swipe, less = tap
+
             document.getElementById('snakeCanvas').addEventListener('touchstart', function (e) {
                 if (gameState !== 'playing') return;
                 e.preventDefault();
-                var touch = e.touches[0];
-                var rect = canvas.getBoundingClientRect();
-                // Touch position in CSS canvas pixels
-                var tapX = (touch.clientX - rect.left);
-                var tapY = (touch.clientY - rect.top);
-                // Snake head center in CSS canvas pixels
-                var headX = (snake[0].x + 0.5) * TILE;
-                var headY = (snake[0].y + 0.5) * TILE;
-                var dx = tapX - headX;
-                var dy = tapY - headY;
-                // Whichever axis the tap is further along determines direction
-                if (Math.abs(dx) >= Math.abs(dy)) {
-                    if (dx > 0 && dir.x === 0) nextDir = {x:  1, y: 0};
-                    if (dx < 0 && dir.x === 0) nextDir = {x: -1, y: 0};
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+            }, {passive: false});
+
+            document.getElementById('snakeCanvas').addEventListener('touchend', function (e) {
+                if (gameState !== 'playing') return;
+                var endX = e.changedTouches[0].clientX;
+                var endY = e.changedTouches[0].clientY;
+                var dx = endX - touchStartX;
+                var dy = endY - touchStartY;
+
+                if (Math.abs(dx) >= SWIPE_THRESHOLD || Math.abs(dy) >= SWIPE_THRESHOLD) {
+                    // Swipe — direction from gesture
+                    if (Math.abs(dx) >= Math.abs(dy)) {
+                        if (dx > 0 && dir.x === 0) nextDir = {x:  1, y: 0};
+                        if (dx < 0 && dir.x === 0) nextDir = {x: -1, y: 0};
+                    } else {
+                        if (dy > 0 && dir.y === 0) nextDir = {x: 0, y:  1};
+                        if (dy < 0 && dir.y === 0) nextDir = {x: 0, y: -1};
+                    }
                 } else {
-                    if (dy > 0 && dir.y === 0) nextDir = {x: 0, y:  1};
-                    if (dy < 0 && dir.y === 0) nextDir = {x: 0, y: -1};
+                    // Tap — direction relative to snake head
+                    var rect = canvas.getBoundingClientRect();
+                    var tapX = endX - rect.left;
+                    var tapY = endY - rect.top;
+                    var headX = (snake[0].x + 0.5) * TILE;
+                    var headY = (snake[0].y + 0.5) * TILE;
+                    var tdx = tapX - headX;
+                    var tdy = tapY - headY;
+                    if (Math.abs(tdx) >= Math.abs(tdy)) {
+                        if (tdx > 0 && dir.x === 0) nextDir = {x:  1, y: 0};
+                        if (tdx < 0 && dir.x === 0) nextDir = {x: -1, y: 0};
+                    } else {
+                        if (tdy > 0 && dir.y === 0) nextDir = {x: 0, y:  1};
+                        if (tdy < 0 && dir.y === 0) nextDir = {x: 0, y: -1};
+                    }
                 }
             }, {passive: false});
 
