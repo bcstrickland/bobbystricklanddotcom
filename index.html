@@ -189,6 +189,8 @@
 
         /* Tab bar */
         .tab-bar {
+            position: relative;
+            z-index: 25;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -244,7 +246,7 @@
         }
         .tab-search svg { width: 28px; height: 28px; fill: currentColor; }
 
-        .home-indicator { display: flex; justify-content: center; padding: 4px 0 12px; }
+        .home-indicator { display: flex; justify-content: center; padding: 4px 0 12px; position: relative; z-index: 25; }
         .home-indicator div { width: 134px; height: 5px; background: #fff; border-radius: 3px; opacity: 0.3; }
         .get-btn:focus-visible,
         .more-app:focus-visible,
@@ -256,8 +258,63 @@
             border-radius: 12px;
         }
 
+        /* Arcade / Snake Game */
+        .game-screen {
+            position: absolute;
+            inset: 0;
+            background: #050508;
+            z-index: 20;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .game-screen.open { display: flex; }
+        .game-hud {
+            display: flex;
+            align-items: center;
+            padding: 60px 20px 10px;
+            flex-shrink: 0;
+        }
+        .game-back-btn {
+            background: none;
+            border: none;
+            color: #0a84ff;
+            cursor: pointer;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            font-family: inherit;
+            font-size: 17px;
+            font-weight: 400;
+        }
+        .game-back-btn svg { width: 22px; height: 22px; fill: currentColor; }
+        .game-score-wrap { margin-left: auto; text-align: right; }
+        .game-score-label { font-size: 11px; color: #8e8e93; text-transform: uppercase; letter-spacing: 0.5px; }
+        .game-score-num { font-size: 22px; font-weight: 700; color: #fff; }
+        #snakeCanvas { display: block; }
+        .game-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            cursor: pointer;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .game-overlay-title { font-size: 38px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+        .game-overlay-score { font-size: 16px; color: #a1a1a6; }
+        .game-overlay-tap { font-size: 15px; color: #0a84ff; margin-top: 12px; }
+
         /* Mobile: remove phone frame, show content natively */
         @media (max-width: 500px) {
+            .game-screen { position: fixed; }
             body { padding: 0; display: block; height: auto; overflow: auto; }
             .phone {
                 width: 100%; max-width: 100%; min-height: 100vh; height: auto;
@@ -425,6 +482,25 @@
             </div>
         </div>
 
+        <div class="game-screen" id="gameScreen">
+            <div class="game-hud">
+                <button class="game-back-btn" id="gameBackBtn">
+                    <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                    Give Up
+                </button>
+                <div class="game-score-wrap">
+                    <div class="game-score-label">Score</div>
+                    <div class="game-score-num" id="scoreVal">0</div>
+                </div>
+            </div>
+            <canvas id="snakeCanvas"></canvas>
+            <div class="game-overlay" id="gameOverlay">
+                <div class="game-overlay-title" id="overlayTitle">Snake</div>
+                <div class="game-overlay-score" id="overlayScore"></div>
+                <div class="game-overlay-tap" id="overlayTap">Tap to Play</div>
+            </div>
+        </div>
+
         <div class="tab-bar">
             <div class="tab-shell">
                 <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab">
@@ -439,7 +515,7 @@
                     <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
                     Apps
                 </a>
-                <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab">
+                <a href="#" id="arcadeTab" class="tab">
                     <svg viewBox="0 0 24 24"><path d="M5 4h4v16H5V4zm5 6h4v10h-4V10zm5-4h4v14h-4V6z"/></svg>
                     Arcade
                 </a>
@@ -452,6 +528,307 @@
         <div class="home-indicator"><div></div></div>
     </div>
     <script>
+        // Snake Game
+        (function () {
+            var TILE = 30;
+            var DPR = window.devicePixelRatio || 1;
+            var canvas, ctx, cols, rows;
+            var snake, dir, nextDir, food, score, highScore;
+            var gameState = 'idle';
+            var loopId = null;
+            var eatFlash = 0;
+            var touchX0, touchY0;
+            var foodBitmap = null; // pre-rendered crisp food image
+
+            var foodImg = new Image();
+            foodImg.src = 'bobby-236.jpeg';
+
+            // Audio
+            var bgMusic = new Audio('game-music.mp3');
+            bgMusic.loop = true;
+            bgMusic.volume = 0.5;
+            var deathSound = new Audio('game-death.wav');
+            deathSound.volume = 0.8;
+
+            function startMusic() {
+                bgMusic.currentTime = bgMusic.currentTime || 0;
+                bgMusic.play().catch(function () {});
+            }
+            function pauseMusic() { bgMusic.pause(); }
+            function resumeMusic() { bgMusic.play().catch(function () {}); }
+
+            // Pre-render food image at tile size using multi-step downscale (avoids blur)
+            function buildFoodBitmap() {
+                var target = (TILE - 2) * DPR;
+                var steps = [foodImg.naturalWidth, Math.round(target * 4), Math.round(target * 2), target];
+                var src = foodImg;
+                for (var i = 1; i < steps.length; i++) {
+                    var tmp = document.createElement('canvas');
+                    tmp.width = tmp.height = steps[i];
+                    var tc = tmp.getContext('2d');
+                    tc.imageSmoothingEnabled = true;
+                    tc.imageSmoothingQuality = 'high';
+                    tc.drawImage(src, 0, 0, steps[i], steps[i]);
+                    src = tmp;
+                }
+                foodBitmap = src;
+            }
+            if (foodImg.complete && foodImg.naturalHeight > 0) {
+                buildFoodBitmap();
+            } else {
+                foodImg.onload = buildFoodBitmap;
+            }
+
+            function openGame() {
+                document.getElementById('gameScreen').classList.add('open');
+                setupCanvas();
+                clearCanvas();
+                showOverlay('Snake', '', 'Tap to Play');
+                gameState = 'idle';
+            }
+
+            function closeGame() {
+                document.getElementById('gameScreen').classList.remove('open');
+                clearInterval(loopId);
+                loopId = null;
+                gameState = 'idle';
+                pauseMusic();
+                bgMusic.currentTime = 0;
+            }
+
+            function setupCanvas() {
+                canvas = document.getElementById('snakeCanvas');
+                var isMobile = window.innerWidth <= 500;
+                var hud = document.querySelector('.game-hud');
+                var tabBar = document.querySelector('.tab-bar');
+                var homeInd = document.querySelector('.home-indicator');
+                var hudH = hud ? hud.offsetHeight : 90;
+                // On mobile: game-screen is position:fixed so use window dimensions
+                // On desktop: phone frame is fixed 393x852
+                var availW = isMobile ? window.innerWidth : 393;
+                var availH = isMobile
+                    ? window.innerHeight - hudH - (tabBar ? tabBar.offsetHeight : 62)
+                    : 852 - hudH - (tabBar ? tabBar.offsetHeight : 62) - (homeInd ? homeInd.offsetHeight : 21);
+                cols = Math.floor(availW / TILE);
+                rows = Math.floor(availH / TILE);
+                // Scale canvas for device pixel ratio — fixes blurriness on retina
+                canvas.width  = cols * TILE * DPR;
+                canvas.height = rows * TILE * DPR;
+                canvas.style.width  = (cols * TILE) + 'px';
+                canvas.style.height = (rows * TILE) + 'px';
+                ctx = canvas.getContext('2d');
+                ctx.scale(DPR, DPR);
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+            }
+
+            function clearCanvas() {
+                if (!ctx) return;
+                ctx.fillStyle = '#050508';
+                ctx.fillRect(0, 0, cols * TILE, rows * TILE);
+            }
+
+            function startGame() {
+                clearInterval(loopId);
+                if (highScore === undefined) highScore = 0;
+                score = 0;
+                document.getElementById('scoreVal').textContent = 0;
+                var cx = Math.floor(cols / 2), cy = Math.floor(rows / 2);
+                snake = [{x: cx, y: cy}, {x: cx - 1, y: cy}, {x: cx - 2, y: cy}];
+                dir = {x: 1, y: 0};
+                nextDir = {x: 1, y: 0};
+                eatFlash = 0;
+                placeFood();
+                hideOverlay();
+                gameState = 'playing';
+                startMusic();
+                loopId = setInterval(tick, 110);
+            }
+
+            function tick() {
+                dir = {x: nextDir.x, y: nextDir.y};
+                var head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+
+                if (head.x < 0 || head.x >= cols || head.y < 0 || head.y >= rows) return die();
+                for (var i = 0; i < snake.length; i++) {
+                    if (snake[i].x === head.x && snake[i].y === head.y) return die();
+                }
+
+                snake.unshift(head);
+
+                if (head.x === food.x && head.y === food.y) {
+                    score++;
+                    if (score > highScore) highScore = score;
+                    document.getElementById('scoreVal').textContent = score;
+                    eatFlash = 10;
+                    placeFood();
+                } else {
+                    snake.pop();
+                    if (eatFlash > 0) eatFlash--;
+                }
+
+                render();
+            }
+
+            function die() {
+                clearInterval(loopId);
+                loopId = null;
+                gameState = 'dead';
+                pauseMusic();
+                deathSound.currentTime = 0;
+                deathSound.play().catch(function () {});
+                render();
+                var scoreText = 'Score: ' + score;
+                var bestText = highScore > 0 ? '  ·  Best: ' + highScore : '';
+                showOverlay('You Died', scoreText + bestText, 'Tap to Play Again');
+            }
+
+            function placeFood() {
+                var pos, ok;
+                do {
+                    pos = {x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows)};
+                    ok = true;
+                    for (var i = 0; i < snake.length; i++) {
+                        if (snake[i].x === pos.x && snake[i].y === pos.y) { ok = false; break; }
+                    }
+                } while (!ok);
+                food = pos;
+            }
+
+            function render() {
+                var W = cols * TILE, H = rows * TILE;
+                ctx.fillStyle = '#050508';
+                ctx.fillRect(0, 0, W, H);
+
+                // Grid
+                ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+                ctx.lineWidth = 0.5;
+                for (var x = 0; x <= W; x += TILE) {
+                    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+                }
+                for (var y = 0; y <= H; y += TILE) {
+                    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+                }
+
+                drawFood();
+                drawSnake();
+            }
+
+            function drawFood() {
+                var fx = food.x * TILE + TILE / 2;
+                var fy = food.y * TILE + TILE / 2;
+                var fr = TILE / 2 - 1;
+                var glowColor = eatFlash > 0 ? 'rgba(255,214,10,0.9)' : 'rgba(10,132,255,0.65)';
+
+                // Glow ring
+                ctx.save();
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = eatFlash > 0 ? 22 : 12;
+                ctx.beginPath();
+                ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+                ctx.strokeStyle = glowColor;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.restore();
+
+                // Face clipped to circle — use pre-rendered bitmap for sharpness
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(fx, fy, fr, 0, Math.PI * 2);
+                ctx.clip();
+                var src = foodBitmap || (foodImg.complete && foodImg.naturalHeight > 0 ? foodImg : null);
+                if (src) {
+                    ctx.drawImage(src, food.x * TILE + 1, food.y * TILE + 1, TILE - 2, TILE - 2);
+                } else {
+                    ctx.fillStyle = '#0a84ff';
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            function drawSnake() {
+                for (var i = snake.length - 1; i >= 0; i--) {
+                    var seg = snake[i];
+                    var isHead = (i === 0);
+                    var alpha = Math.max(0.2, 1 - i * 0.018);
+                    ctx.fillStyle = isHead ? '#30d158' : ('rgba(48,209,88,' + alpha + ')');
+                    var m = isHead ? 1 : 2;
+                    var r = isHead ? 7 : 4;
+                    rrect(seg.x * TILE + m, seg.y * TILE + m, TILE - m * 2, TILE - m * 2, r);
+                    ctx.fill();
+                }
+            }
+
+            function rrect(x, y, w, h, r) {
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(x, y, w, h, r);
+                } else {
+                    ctx.moveTo(x + r, y);
+                    ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+                    ctx.closePath();
+                }
+            }
+
+            function showOverlay(title, score, tap) {
+                var o = document.getElementById('gameOverlay');
+                o.style.display = 'flex';
+                document.getElementById('overlayTitle').textContent = title;
+                document.getElementById('overlayScore').textContent = score || '';
+                document.getElementById('overlayTap').textContent = tap || '';
+            }
+
+            function hideOverlay() {
+                document.getElementById('gameOverlay').style.display = 'none';
+            }
+
+            // Keyboard controls
+            document.addEventListener('keydown', function (e) {
+                if (gameState !== 'playing') return;
+                if (e.key === 'ArrowUp'    && dir.y === 0) { nextDir = {x: 0,  y: -1}; e.preventDefault(); }
+                if (e.key === 'ArrowDown'  && dir.y === 0) { nextDir = {x: 0,  y:  1}; e.preventDefault(); }
+                if (e.key === 'ArrowLeft'  && dir.x === 0) { nextDir = {x: -1, y:  0}; e.preventDefault(); }
+                if (e.key === 'ArrowRight' && dir.x === 0) { nextDir = {x:  1, y:  0}; e.preventDefault(); }
+            });
+
+            // Swipe controls (mobile)
+            document.getElementById('snakeCanvas').addEventListener('touchstart', function (e) {
+                touchX0 = e.touches[0].clientX;
+                touchY0 = e.touches[0].clientY;
+            }, {passive: true});
+
+            document.getElementById('snakeCanvas').addEventListener('touchend', function (e) {
+                if (gameState !== 'playing') return;
+                var dx = e.changedTouches[0].clientX - touchX0;
+                var dy = e.changedTouches[0].clientY - touchY0;
+                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    if (dx > 0  && dir.x === 0) nextDir = {x:  1, y: 0};
+                    if (dx < 0  && dir.x === 0) nextDir = {x: -1, y: 0};
+                } else {
+                    if (dy > 0  && dir.y === 0) nextDir = {x: 0, y:  1};
+                    if (dy < 0  && dir.y === 0) nextDir = {x: 0, y: -1};
+                }
+            }, {passive: true});
+
+            // Overlay tap → start / restart
+            document.getElementById('gameOverlay').addEventListener('click', function () {
+                if (gameState === 'idle' || gameState === 'dead') startGame();
+            });
+
+            // Arcade tab
+            document.getElementById('arcadeTab').addEventListener('click', function (e) {
+                e.preventDefault();
+                openGame();
+            });
+
+            // Back button
+            document.getElementById('gameBackBtn').addEventListener('click', closeGame);
+        })();
+
         function scalePhone() {
             if (window.innerWidth <= 500) return;
             var phone = document.querySelector('.phone');
