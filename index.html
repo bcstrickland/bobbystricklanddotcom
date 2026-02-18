@@ -311,6 +311,7 @@
         .game-overlay-title { font-size: 38px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
         .game-overlay-score { font-size: 16px; color: #a1a1a6; }
         .game-overlay-tap { font-size: 15px; color: #0a84ff; margin-top: 12px; }
+        .game-overlay-quit { font-size: 17px; color: #ff3b30; margin-top: 8px; cursor: pointer; font-weight: 400; }
 
         /* Mobile: remove phone frame, show content natively */
         @media (max-width: 500px) {
@@ -498,6 +499,7 @@
                 <div class="game-overlay-title" id="overlayTitle">Snake</div>
                 <div class="game-overlay-score" id="overlayScore"></div>
                 <div class="game-overlay-tap" id="overlayTap">Tap to Play</div>
+                <div class="game-overlay-quit" id="overlayQuit"></div>
             </div>
         </div>
 
@@ -680,7 +682,7 @@
                 render();
                 var scoreText = 'Score: ' + score;
                 var bestText = highScore > 0 ? '  ·  Best: ' + highScore : '';
-                showOverlay('You Died', scoreText + bestText, 'Tap to Play Again');
+                showOverlay('You Died', scoreText + bestText, 'Tap to Play Again', true);
             }
 
             function placeFood() {
@@ -773,12 +775,13 @@
                 }
             }
 
-            function showOverlay(title, score, tap) {
+            function showOverlay(title, score, tap, showQuit) {
                 var o = document.getElementById('gameOverlay');
                 o.style.display = 'flex';
                 document.getElementById('overlayTitle').textContent = title;
                 document.getElementById('overlayScore').textContent = score || '';
                 document.getElementById('overlayTap').textContent = tap || '';
+                document.getElementById('overlayQuit').textContent = showQuit ? 'Give Up' : '';
             }
 
             function hideOverlay() {
@@ -794,29 +797,40 @@
                 if (e.key === 'ArrowRight' && dir.x === 0) { nextDir = {x:  1, y:  0}; e.preventDefault(); }
             });
 
-            // Swipe controls (mobile)
+            // Tap-relative controls (mobile only)
+            // Tap anywhere on the canvas: direction is determined by angle from snake head to tap point
             document.getElementById('snakeCanvas').addEventListener('touchstart', function (e) {
-                touchX0 = e.touches[0].clientX;
-                touchY0 = e.touches[0].clientY;
-            }, {passive: true});
-
-            document.getElementById('snakeCanvas').addEventListener('touchend', function (e) {
                 if (gameState !== 'playing') return;
-                var dx = e.changedTouches[0].clientX - touchX0;
-                var dy = e.changedTouches[0].clientY - touchY0;
-                if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    if (dx > 0  && dir.x === 0) nextDir = {x:  1, y: 0};
-                    if (dx < 0  && dir.x === 0) nextDir = {x: -1, y: 0};
+                e.preventDefault();
+                var touch = e.touches[0];
+                var rect = canvas.getBoundingClientRect();
+                // Touch position in CSS canvas pixels
+                var tapX = (touch.clientX - rect.left);
+                var tapY = (touch.clientY - rect.top);
+                // Snake head center in CSS canvas pixels
+                var headX = (snake[0].x + 0.5) * TILE;
+                var headY = (snake[0].y + 0.5) * TILE;
+                var dx = tapX - headX;
+                var dy = tapY - headY;
+                // Whichever axis the tap is further along determines direction
+                if (Math.abs(dx) >= Math.abs(dy)) {
+                    if (dx > 0 && dir.x === 0) nextDir = {x:  1, y: 0};
+                    if (dx < 0 && dir.x === 0) nextDir = {x: -1, y: 0};
                 } else {
-                    if (dy > 0  && dir.y === 0) nextDir = {x: 0, y:  1};
-                    if (dy < 0  && dir.y === 0) nextDir = {x: 0, y: -1};
+                    if (dy > 0 && dir.y === 0) nextDir = {x: 0, y:  1};
+                    if (dy < 0 && dir.y === 0) nextDir = {x: 0, y: -1};
                 }
-            }, {passive: true});
+            }, {passive: false});
 
             // Overlay tap → start / restart
-            document.getElementById('gameOverlay').addEventListener('click', function () {
+            document.getElementById('gameOverlay').addEventListener('click', function (e) {
                 if (gameState === 'idle' || gameState === 'dead') startGame();
+            });
+
+            // Give Up button on You Died screen
+            document.getElementById('overlayQuit').addEventListener('click', function (e) {
+                e.stopPropagation();
+                closeGame();
             });
 
             // Arcade tab
