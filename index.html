@@ -728,7 +728,7 @@
                 render();
                 var scoreText = 'Score: ' + score;
                 var bestText = highScore > 0 ? '  ·  Best: ' + highScore : '';
-                showOverlay('You Died', scoreText + bestText, 'Tap to Play Again', true);
+                showOverlay(score >= 30 ? 'GET A LIFE' : 'You Died', scoreText + bestText, 'Tap to Play Again', true);
             }
 
             function placeFood() {
