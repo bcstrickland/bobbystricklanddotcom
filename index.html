@@ -245,6 +245,7 @@
                 0 2px 8px rgba(0,0,0,0.35);
         }
         .tab-search svg { width: 28px; height: 28px; fill: currentColor; }
+        .tab-search.active { color: #fff; }
 
         .home-indicator { display: flex; justify-content: center; padding: 4px 0 12px; position: relative; z-index: 25; }
         .home-indicator div { width: 134px; height: 5px; background: #fff; border-radius: 3px; opacity: 0.3; }
@@ -524,15 +525,15 @@
 
         <div class="tab-bar">
             <div class="tab-shell">
-                <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab">
+                <a href="#" id="todayTab" class="tab">
                     <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
                     Today
                 </a>
-                <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab">
+                <a href="#" id="gamesTab" class="tab">
                     <svg viewBox="0 0 24 24"><path d="M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z"/></svg>
                     Games
                 </a>
-                <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab active">
+                <a href="#" id="appsTab" class="tab active">
                     <svg viewBox="0 0 24 24"><path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12z"/></svg>
                     Apps
                 </a>
@@ -541,7 +542,7 @@
                     Arcade
                 </a>
             </div>
-            <a href="https://www.linkedin.com/in/bstrick/" target="_blank" rel="noopener noreferrer" class="tab-search" aria-label="Search">
+            <a href="#" id="searchBtn" class="tab-search" aria-label="Search">
                 <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
             </a>
         </div>
@@ -565,14 +566,25 @@
             foodImg.src = 'bobby-236.jpeg';
 
             // Audio
-            var bgMusic = new Audio('game-music.mp3');
+            var bgMusic = new Audio('game-music-2.ogg');
             bgMusic.loop = true;
             bgMusic.volume = 0.5;
             var deathSound = new Audio('game-death.wav');
             deathSound.volume = 0.8;
 
+            // Unlock all audio on first touch (iOS requires user gesture)
+            function unlockAudio() {
+                [bgMusic, deathSound].forEach(function (a) {
+                    a.play().then(function () {
+                        a.pause();
+                        a.currentTime = 0;
+                    }).catch(function () {});
+                });
+            }
+            document.addEventListener('touchstart', unlockAudio, {once: true, passive: true});
+
             function startMusic() {
-                bgMusic.currentTime = bgMusic.currentTime || 0;
+                bgMusic.currentTime = 0;
                 bgMusic.play().catch(function () {});
             }
             function pauseMusic() { bgMusic.pause(); }
@@ -600,8 +612,15 @@
                 foodImg.onload = buildFoodBitmap;
             }
 
-            function openGame() {
+            function setActiveTab(id) {
+                document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+                document.getElementById('searchBtn').classList.remove('active');
+                document.getElementById(id).classList.add('active');
+            }
+
+            function openGame(tabId) {
                 document.getElementById('gameScreen').classList.add('open');
+                setActiveTab(tabId || 'arcadeTab');
                 setupCanvas();
                 clearCanvas();
                 showOverlay('Snake', '', 'Tap to Play');
@@ -610,6 +629,7 @@
 
             function closeGame() {
                 document.getElementById('gameScreen').classList.remove('open');
+                setActiveTab('appsTab');
                 clearInterval(loopId);
                 loopId = null;
                 gameState = 'idle';
@@ -873,10 +893,35 @@
                 closeGame();
             });
 
+            // Today + Search — return to landing page
+            document.getElementById('todayTab').addEventListener('click', function (e) {
+                e.preventDefault();
+                closeGame();
+                setActiveTab('todayTab');
+            });
+            document.getElementById('searchBtn').addEventListener('click', function (e) {
+                e.preventDefault();
+                closeGame();
+                document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+                document.getElementById('searchBtn').classList.add('active');
+            });
+
+            // Games tab
+            document.getElementById('gamesTab').addEventListener('click', function (e) {
+                e.preventDefault();
+                openGame('gamesTab');
+            });
+
             // Arcade tab
             document.getElementById('arcadeTab').addEventListener('click', function (e) {
                 e.preventDefault();
-                openGame();
+                openGame('arcadeTab');
+            });
+
+            // Apps tab — close game, return to landing page
+            document.getElementById('appsTab').addEventListener('click', function (e) {
+                e.preventDefault();
+                closeGame();
             });
 
             // Back button
