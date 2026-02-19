@@ -571,13 +571,18 @@
             bgMusic.volume = 0.5;
             var deathSound = new Audio('game-death.wav');
             deathSound.volume = 0.8;
+            var chompSound = new Audio('chomp.wav');
+            chompSound.volume = 0.8;
 
             // Unlock all audio on first touch (iOS requires user gesture)
             function unlockAudio() {
-                [bgMusic, deathSound].forEach(function (a) {
+                [bgMusic, deathSound, chompSound].forEach(function (a) {
+                    var vol = a.volume;
+                    a.volume = 0;
                     a.play().then(function () {
                         a.pause();
                         a.currentTime = 0;
+                        a.volume = vol;
                     }).catch(function () {});
                 });
             }
@@ -702,6 +707,8 @@
                     if (score > highScore) highScore = score;
                     document.getElementById('scoreVal').textContent = score;
                     eatFlash = 10;
+                    chompSound.currentTime = 0;
+                    chompSound.play().catch(function () {});
                     placeFood();
                 } else {
                     snake.pop();
