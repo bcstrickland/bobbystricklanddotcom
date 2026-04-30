@@ -313,6 +313,20 @@
         .game-overlay-score { font-size: 16px; color: #a1a1a6; }
         .game-overlay-tap { font-size: 17px; color: #0a84ff; margin-top: 16px; }
         .game-overlay-quit { font-size: 17px; color: #ff3b30; margin-top: 20px; cursor: pointer; font-weight: 400; }
+        .overlay-lb { width: 100%; max-width: 280px; margin-top: 16px; }
+        .overlay-lb-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; color: #636366; margin-bottom: 6px; text-align: center; }
+        .overlay-lb-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 14px; }
+        .overlay-lb-row:last-child { border-bottom: none; }
+        .overlay-lb-rank { width: 16px; color: #636366; font-size: 12px; text-align: right; flex-shrink: 0; }
+        .overlay-lb-name { flex: 1; color: #e5e5ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .overlay-lb-name.is-you { color: #30d158; font-weight: 600; }
+        .overlay-lb-score { color: #a1a1a6; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+        .overlay-name-wrap { margin-top: 10px; width: 100%; max-width: 280px; }
+        .overlay-lb-qualify { font-size: 14px; color: #30d158; margin-bottom: 8px; text-align: center; }
+        .overlay-name-row { display: flex; gap: 8px; }
+        .overlay-name-row input { flex: 1; min-width: 0; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 15px; padding: 7px 10px; font-family: inherit; outline: none; -webkit-appearance: none; }
+        .overlay-name-row input::placeholder { color: #48484a; }
+        .overlay-name-row button { background: #0a84ff; border: none; border-radius: 8px; color: #fff; font-size: 15px; font-family: inherit; font-weight: 600; padding: 7px 14px; cursor: pointer; white-space: nowrap; }
 
         /* Mobile: remove phone frame, show content natively */
         @media (max-width: 500px) {
@@ -520,6 +534,17 @@
                 <div class="game-overlay-score" id="overlayScore"></div>
                 <div class="game-overlay-tap" id="overlayTap">Tap to Play</div>
                 <div class="game-overlay-quit" id="overlayQuit"></div>
+                <div class="overlay-lb" id="overlayLb" style="display:none">
+                    <div class="overlay-lb-heading">Today's Top 5</div>
+                    <div id="overlayLbList"></div>
+                </div>
+                <div class="overlay-name-wrap" id="overlayNameWrap" style="display:none">
+                    <div class="overlay-lb-qualify">You made the leaderboard!</div>
+                    <div class="overlay-name-row">
+                        <input type="text" id="overlayNameInput" placeholder="Your name" maxlength="15" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false">
+                        <button id="overlayNameSubmit">Save</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -728,7 +753,49 @@
                 render();
                 var scoreText = 'Score: ' + score;
                 var bestText = highScore > 0 ? '  ·  Best: ' + highScore : '';
-                showOverlay(score >= 30 ? 'GET A LIFE' : 'You Died', scoreText + bestText, 'Tap to Play Again', true);
+                showOverlay(score >= 30 ? 'GET A LIFE' : 'You Died', scoreText + bestText, '', true);
+                checkLeaderboard(score);
+            }
+
+            function escHtml(s) {
+                return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            }
+
+            function showLbList(scores, highlightEntry) {
+                var lb = document.getElementById('overlayLb');
+                var list = document.getElementById('overlayLbList');
+                if (!scores || scores.length === 0) { lb.style.display = 'none'; return; }
+                lb.style.display = 'block';
+                list.innerHTML = scores.map(function(s, i) {
+                    var isYou = highlightEntry && s.name === highlightEntry.name && s.score === highlightEntry.score;
+                    return '<div class="overlay-lb-row">' +
+                        '<span class="overlay-lb-rank">' + (i + 1) + '</span>' +
+                        '<span class="overlay-lb-name' + (isYou ? ' is-you' : '') + '">' + escHtml(s.name) + '</span>' +
+                        '<span class="overlay-lb-score">' + s.score + '</span>' +
+                        '</div>';
+                }).join('');
+            }
+
+            function checkLeaderboard(finalScore) {
+                document.getElementById('overlayTap').textContent = '';
+                if (!window.leaderboard || finalScore === 0) {
+                    document.getElementById('overlayTap').textContent = 'Tap to Play Again';
+                    return;
+                }
+                window.leaderboard.getTopScores().then(function(scores) {
+                    showLbList(scores, null);
+                    var qualifies = scores.length < 5 || finalScore > scores[scores.length - 1].score;
+                    if (qualifies) {
+                        var nameWrap = document.getElementById('overlayNameWrap');
+                        nameWrap.style.display = 'block';
+                        var input = document.getElementById('overlayNameInput');
+                        input.value = localStorage.getItem('snakeName') || '';
+                    } else {
+                        document.getElementById('overlayTap').textContent = 'Tap to Play Again';
+                    }
+                }).catch(function() {
+                    document.getElementById('overlayTap').textContent = 'Tap to Play Again';
+                });
             }
 
             function placeFood() {
@@ -832,6 +899,8 @@
 
             function hideOverlay() {
                 document.getElementById('gameOverlay').style.display = 'none';
+                document.getElementById('overlayLb').style.display = 'none';
+                document.getElementById('overlayNameWrap').style.display = 'none';
             }
 
             // Keyboard controls
@@ -889,9 +958,39 @@
                 }
             }, {passive: false});
 
-            // Overlay tap → start / restart
+            // Overlay tap → start / restart (blocked while name form is visible)
             document.getElementById('gameOverlay').addEventListener('click', function (e) {
-                if (gameState === 'idle' || gameState === 'dead') startGame();
+                if (gameState === 'idle' || gameState === 'dead') {
+                    if (document.getElementById('overlayNameWrap').style.display !== 'none') return;
+                    startGame();
+                }
+            });
+
+            // Name form — stop clicks/touches bubbling up to overlay
+            document.getElementById('overlayNameWrap').addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            document.getElementById('overlayNameInput').addEventListener('touchstart', function(e) {
+                e.stopPropagation();
+            }, {passive: true});
+
+            document.getElementById('overlayNameSubmit').addEventListener('click', function(e) {
+                e.stopPropagation();
+                var input = document.getElementById('overlayNameInput');
+                var name = input.value.trim();
+                if (!name) { input.focus(); return; }
+                localStorage.setItem('snakeName', name);
+                document.getElementById('overlayNameWrap').style.display = 'none';
+                document.getElementById('overlayTap').textContent = 'Saving...';
+                var finalScore = score;
+                window.leaderboard.submitScore(name, finalScore).then(function() {
+                    return window.leaderboard.getTopScores();
+                }).then(function(scores) {
+                    showLbList(scores, {name: name, score: finalScore});
+                    document.getElementById('overlayTap').textContent = 'Tap to Play Again';
+                }).catch(function() {
+                    document.getElementById('overlayTap').textContent = 'Tap to Play Again';
+                });
             });
 
             // Give Up button on You Died screen
@@ -945,6 +1044,44 @@
         }
         scalePhone();
         window.addEventListener('resize', scalePhone);
+    </script>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js';
+        import { getFirestore, collection, addDoc, query, where, getDocs } from 'https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js';
+
+        const app = initializeApp({
+            apiKey: 'AIzaSyAWdiVCAwVG_piSVwnbfGFTTV3Rham5wR0',
+            authDomain: 'bobbystrickland-snake.firebaseapp.com',
+            projectId: 'bobbystrickland-snake',
+            storageBucket: 'bobbystrickland-snake.firebasestorage.app',
+            messagingSenderId: '704356553533',
+            appId: '1:704356553533:web:79bc02236a0cb294822b54'
+        });
+        const db = getFirestore(app);
+
+        function todayStr() {
+            var d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        }
+
+        async function getTopScores() {
+            const q = query(collection(db, 'scores'), where('date', '==', todayStr()));
+            const snap = await getDocs(q);
+            return snap.docs
+                .map(d => d.data())
+                .sort((a, b) => b.score - a.score)
+                .slice(0, 5);
+        }
+
+        async function submitScore(name, score) {
+            await addDoc(collection(db, 'scores'), {
+                name: name.trim().slice(0, 20),
+                score: score,
+                date: todayStr()
+            });
+        }
+
+        window.leaderboard = { getTopScores, submitScore };
     </script>
 </body>
 </html>
