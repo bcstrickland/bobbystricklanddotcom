@@ -320,9 +320,12 @@
         .overlay-lb-rank { width: 16px; color: #636366; font-size: 12px; text-align: right; flex-shrink: 0; }
         .overlay-lb-name { flex: 1; color: #e5e5ea; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .overlay-lb-name.is-you { color: #30d158; font-weight: 600; }
+        .overlay-lb-name.is-placeholder { color: #30d158; font-style: italic; opacity: 0.7; }
         .overlay-lb-score { color: #a1a1a6; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-        .overlay-name-wrap { margin-top: 10px; width: 100%; max-width: 280px; }
-        .overlay-lb-qualify { font-size: 14px; color: #30d158; margin-bottom: 8px; text-align: center; }
+        .overlay-lb-score.is-you { color: #30d158; }
+        .overlay-lb-row.is-you-row { background: rgba(48,209,88,0.07); border-radius: 4px; margin: 0 -4px; padding-left: 4px; padding-right: 4px; }
+        .overlay-name-wrap { margin-top: 12px; width: 100%; max-width: 280px; }
+        .overlay-lb-qualify { font-size: 15px; font-weight: 600; color: #30d158; margin-bottom: 10px; text-align: center; }
         .overlay-name-row { display: flex; gap: 8px; }
         .overlay-name-row input { flex: 1; min-width: 0; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; color: #fff; font-size: 15px; padding: 7px 10px; font-family: inherit; outline: none; -webkit-appearance: none; }
         .overlay-name-row input::placeholder { color: #48484a; }
@@ -767,11 +770,15 @@
                 if (!scores || scores.length === 0) { lb.style.display = 'none'; return; }
                 lb.style.display = 'block';
                 list.innerHTML = scores.map(function(s, i) {
-                    var isYou = highlightEntry && s.name === highlightEntry.name && s.score === highlightEntry.score;
-                    return '<div class="overlay-lb-row">' +
+                    var isPlaceholder = s.name === null;
+                    var isYou = !isPlaceholder && highlightEntry && s.name === highlightEntry.name && s.score === highlightEntry.score;
+                    var nameHtml = isPlaceholder
+                        ? '<span class="overlay-lb-name is-placeholder">— your name —</span>'
+                        : '<span class="overlay-lb-name' + (isYou ? ' is-you' : '') + '">' + escHtml(s.name) + '</span>';
+                    return '<div class="overlay-lb-row' + (isPlaceholder || isYou ? ' is-you-row' : '') + '">' +
                         '<span class="overlay-lb-rank">' + (i + 1) + '</span>' +
-                        '<span class="overlay-lb-name' + (isYou ? ' is-you' : '') + '">' + escHtml(s.name) + '</span>' +
-                        '<span class="overlay-lb-score">' + s.score + '</span>' +
+                        nameHtml +
+                        '<span class="overlay-lb-score' + (isPlaceholder || isYou ? ' is-you' : '') + '">' + s.score + '</span>' +
                         '</div>';
                 }).join('');
             }
@@ -783,14 +790,18 @@
                     return;
                 }
                 window.leaderboard.getTopScores().then(function(scores) {
-                    showLbList(scores, null);
                     var qualifies = scores.length < 5 || finalScore > scores[scores.length - 1].score;
                     if (qualifies) {
-                        var nameWrap = document.getElementById('overlayNameWrap');
-                        nameWrap.style.display = 'block';
+                        var preview = scores.slice();
+                        preview.push({name: null, score: finalScore});
+                        preview.sort(function(a, b) { return b.score - a.score; });
+                        preview = preview.slice(0, 5);
+                        showLbList(preview, null);
+                        document.getElementById('overlayNameWrap').style.display = 'block';
                         var input = document.getElementById('overlayNameInput');
                         input.value = localStorage.getItem('snakeName') || '';
                     } else {
+                        showLbList(scores, null);
                         document.getElementById('overlayTap').textContent = 'Tap to Play Again';
                     }
                 }).catch(function() {
